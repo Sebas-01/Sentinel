@@ -1,0 +1,78 @@
+# Plano de despliegue en Render (plan gratuito). Render lee este archivo y crea
+# los tres servicios. La base de datos NO vive aqui: esta en Neon y se conecta
+# con DATABASE_URL, que se pega a mano en el panel de Render (sync: false).
+services:
+  # Backend Django. El plan gratuito no permite workers aparte, asi que las
+  # tareas de fondo (Celery worker + beat) corren en el mismo contenedor.
+  - type: web
+    name: sentinel-api
+    runtime: docker
+    plan: free
+    # Misma region que la base en Neon (AWS US East 2, Ohio) para menor latencia.
+    region: ohio
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: >-
+      sh -c "python manage.py migrate --noinput &&
+      python manage.py collectstatic --noinput &&
+      (celery -A config worker -B -l info -c 1 &) &&
+      exec gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.render
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TRANSACTIONS_HMAC_SECRET
+        generateValue: true
+      - key: TRANSACTIONS_REQUIRE_SIGNATURE
+        value: "False"
+      - key: DATABASE_URL
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        value: https://sentinel-web.onrender.com
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sentinel-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: sentinel-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: sentinel-redis
+          property: connectionString
+
+  # Redis gratuito, solo accesible desde los servicios internos de Render.
+  - type: keyvalue
+    name: sentinel-redis
+    plan: free
+    region: ohio
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+  # Frontend React como sitio estatico. Reenvia la API y el admin al backend,
+  # igual que hace nginx en Docker, para que el navegador vea un solo dominio.
+  - type: web
+    name: sentinel-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://sentinel-api.onrender.com/api/*
+      - type: rewrite
+        source: /admin/*
+        destination: https://sentinel-api.onrender.com/admin/*
+      - type: rewrite
+        source: /static/*
+        destination: https://sentinel-api.onrender.com/static/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
