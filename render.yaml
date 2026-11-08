@@ -27,7 +27,7 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
-        value: https://sentinel-web.onrender.com
+        value: https://sentinel-web-70o2.onrender.com
       - key: REDIS_URL
         fromService:
           type: keyvalue
