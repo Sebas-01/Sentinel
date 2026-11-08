@@ -13,11 +13,8 @@ services:
     rootDir: backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    dockerCommand: >-
-      sh -c "python manage.py migrate --noinput &&
-      python manage.py collectstatic --noinput &&
-      (celery -A config worker -B -l info -c 1 &) &&
-      exec gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2"
+    # Render no pasa la orden por una shell: el arranque vive en un script.
+    dockerCommand: sh scripts/render_start.sh
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.render
@@ -66,13 +63,13 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://sentinel-api.onrender.com/api/*
+        destination: https://sentinel-api-tvz7.onrender.com/api/*
       - type: rewrite
         source: /admin/*
-        destination: https://sentinel-api.onrender.com/admin/*
+        destination: https://sentinel-api-tvz7.onrender.com/admin/*
       - type: rewrite
         source: /static/*
-        destination: https://sentinel-api.onrender.com/static/*
+        destination: https://sentinel-api-tvz7.onrender.com/static/*
       - type: rewrite
         source: /*
         destination: /index.html
